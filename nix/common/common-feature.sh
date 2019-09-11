@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+# shellcheck shell=bash
 if [ ! "$_STELLA_COMMON_FEATURE_INCLUDED_" = "1" ]; then
 _STELLA_COMMON_FEATURE_INCLUDED_=1
 
@@ -147,7 +147,7 @@ __feature_catalog_info() {
 # look for information about an installed feature
 __feature_match_installed() {
 	local _SCHEMA="$1"
-
+echo __feature_match_installed _SCHEMA $_SCHEMA
 	#local _tested=
 	local _version_selector=
 	local _version_matched=
@@ -159,12 +159,45 @@ __feature_match_installed() {
 		__internal_feature_context
 		return
 	fi
-	# we are NOT inside a bundle, because FEAT_BUNDLE_MODE is NOT set
-	if [ "$FEAT_BUNDLE_MODE" = "" ]; then
+
+
+	# we are parsing items from inside a bundle. 
+	if [ ! "$FEAT_BUNDLE_MODE" = "" ]; then
+		__internal_feature_context "$_SCHEMA"
+	else
+		# we are NOT parsing items from inside a bundle, because FEAT_BUNDLE_MODE is NOT set
+		# we are parsing a single feature OR a bundle feature
 		__translate_schema "$_SCHEMA" "__VAR_FEATURE_NAME" "__VAR_FEATURE_VER" "__VAR_FEATURE_ARCH" "__VAR_FEATURE_FLAVOUR"
 		#[ ! "$__VAR_FEATURE_VER" = "" ] && _tested="$__VAR_FEATURE_VER"
 		[ ! "$__VAR_FEATURE_VER" = "" ] && _version_selector="$__VAR_FEATURE_VER"
 		[ ! "$__VAR_FEATURE_ARCH" = "" ] && _tested="$_tested"@"$__VAR_FEATURE_ARCH"
+
+
+		local __test_feature_root
+		case $FEAT_BUNDLE in
+			# we cannot match installed version of theses kind of bundle because of their folder structure
+			MERGE_LIST|LIST )
+				# MERGE_LIST : [feat_bundle_name/feat files] ==> we cannot retrieve any version information
+				# LIST : this bundle is just a list  ===> we cannot retrieve feat bundle name, because there is no folder with this name
+				__internal_feature_context "$_SCHEMA"
+				return
+			;;
+			NESTED|MERGE )
+				# MERGE : [feat_bundle_name/feat_bundle_version/feat files]
+				# NESTED : [feat_bundle_name/feat_bundle_version/feat_bundle_item_name/feat files]
+				__test_feature_root="${__VAR_FEATURE_NAME}"
+			;;
+			PROXY )
+				# PROXY : [feat_bundle_name/feat_bundle_item_version/feat files]
+				__test_feature_root="${__VAR_FEATURE_NAME}"
+			;;
+			* )
+				# standalone feature :[feat_name/feat_item_version/feat files]
+				__test_feature_root="${__VAR_FEATURE_NAME}"
+				# NOT a feature of type bundle, might be a single feature OR a bundle feature
+			;;
+		esac
+
 
 		# first lookup inside app feature root
 		if [ -d "$STELLA_APP_FEATURE_ROOT/$__VAR_FEATURE_NAME" ]; then
@@ -214,78 +247,14 @@ __feature_match_installed() {
 				STELLA_APP_FEATURE_ROOT=$STELLA_INTERNAL_FEATURE_ROOT
 			fi
 		fi
-
-
-		# # first lookup inside app feature root
-		# if [ -d "$STELLA_APP_FEATURE_ROOT/$__VAR_FEATURE_NAME" ]; then
-		# 	# for each detected version
-		# 	for _f in "$STELLA_APP_FEATURE_ROOT"/"$__VAR_FEATURE_NAME"/*; do
-		# 		if [ -d "$_f" ]; then
-		# 			if [ "$_tested" = "" ]; then
-		# 				# we match any installed version
-		# 				_found="$_f"
-		# 			else
-		# 				case $_f in
-		# 					*"$_tested"*)
-		# 						_found="$_f"
-		# 					;;
-		# 					*)
-		# 					;;
-		# 				esac
-		# 			fi
-		# 		fi
-		# 	done
-		# fi
-		# # second lookup inside internal feature root
-		# if [ "$_found" = "" ]; then
-		# 	if [ ! "$STELLA_APP_FEATURE_ROOT" = "$STELLA_INTERNAL_FEATURE_ROOT" ]; then
-		# 		if [ -d "$STELLA_INTERNAL_FEATURE_ROOT/$__VAR_FEATURE_NAME" ]; then
-		# 			# for each detected version
-		# 			for _f in  "$STELLA_INTERNAL_FEATURE_ROOT"/"$__VAR_FEATURE_NAME"/*; do
-		# 				if [ -d "$_f" ]; then
-		# 					if [ "$_tested" = "" ]; then
-		# 						_found="$_f"
-		# 					else
-		# 						case $_f in
-		# 							*"$_tested"*)
-		# 								_found="$_f"
-		# 							;;
-		# 							*)
-		# 							;;
-		# 						esac
-		# 					fi
-		# 				fi
-		# 			done
-		# 		fi
-		# 	fi
-		# 	if [ ! "$_found" = "" ]; then
-		# 		_found_internal=1
-		# 		_save_app_feature_root=$STELLA_APP_FEATURE_ROOT
-		# 		STELLA_APP_FEATURE_ROOT=$STELLA_INTERNAL_FEATURE_ROOT
-		# 	fi
-		#
-		# fi
-
-
-
-		# if [ ! "$_found" = "" ]; then
-		# 	# we fix the found version with the flavour of the requested schema
-		# 	if [ ! "$__VAR_FEATURE_FLAVOUR" = "" ]; then
-		# 		__internal_feature_context "$__VAR_FEATURE_NAME"#"$(__get_filename_from_string $_found)":"$__VAR_FEATURE_FLAVOUR"
-		# 	else
-		# 		__internal_feature_context "$__VAR_FEATURE_NAME"#"$(__get_filename_from_string $_found)"
-		# 	fi
-		# 	if [ "$_found_internal" = "1" ];then
-		# 		STELLA_APP_FEATURE_ROOT=$_save_app_feature_root
-		# 		_found_internal=0
-		# 	fi
-		# else
-		# 	# empty info values
-		# 	__internal_feature_context
-		# fi
-
-
+echo _version_matched $_version_matched
 		if [ ! "${_version_matched}" = "" ]; then
+			
+			# TODO if internal replace STELLA_APP_FEATURE_ROOT with STELLA_INTERNAL_FEATURE_ROOT
+			if [ "${FEAT_BUNDLE}" = "PROXY" ]; then
+				[ -f "${STELLA_APP_FEATURE_ROOT}/${_version_matched}.stella" ] && __VAR_FEATURE_NAME="$(cat "${STELLA_APP_FEATURE_ROOT}/${_version_matched}.stella")"
+			fi
+
 			# we fix the found version with the flavour of the requested schema
 			if [ ! "$__VAR_FEATURE_FLAVOUR" = "" ]; then
 				__internal_feature_context "${__VAR_FEATURE_NAME}#${_version_matched}:${__VAR_FEATURE_FLAVOUR}"
@@ -300,8 +269,6 @@ __feature_match_installed() {
 			# empty info values
 			__internal_feature_context
 		fi
-	else
-		__internal_feature_context "$_SCHEMA"
 	fi
 }
 
@@ -356,8 +323,11 @@ __feature_inspect() {
 	TEST_FEATURE=0
 
 	[ "$_SCHEMA" = "" ] && return
+	# grab feature installed on disk and set FEAT_SCHEMA_SELECTED
 	__feature_match_installed "$_SCHEMA"
 
+
+	# check FEAT_INSTALL_TEST to see if correctly installed
 	if [ ! "$FEAT_SCHEMA_SELECTED" = "" ]; then
 		if [ ! "$FEAT_BUNDLE" = "" ]; then
 
@@ -415,7 +385,7 @@ __feature_remove() {
 		#[ "$o" = "HIDDEN" ] && _opt_hidden_feature=ON
 		[ "$o" = "NON_DECLARED" ] && _opt_non_declared_feature=ON
 	done
-
+echo __feature_remove $_SCHEMA FEAT_INSTALL_ROOT $FEAT_INSTALL_ROOT
 	__feature_inspect "$_SCHEMA"
 
 	if [ ! "$FEAT_SCHEMA_OS_RESTRICTION" = "" ]; then
@@ -445,29 +415,37 @@ __feature_remove() {
 	#if [ ! "$_opt_hidden_feature" = "ON" ]; then
 		__remove_app_feature $_SCHEMA
 	fi
-
+echo __feature_remove TEST_FEATURE $TEST_FEATURE
+echo __feature_remove FEAT_BUNDLE $FEAT_BUNDLE
 	if [ "$TEST_FEATURE" = "1" ]; then
 
 		if [ ! "$FEAT_BUNDLE" = "" ]; then
 			__log "DEBUG" " ** Remove bundle $FEAT_NAME version $FEAT_VERSION"
-			__del_folder $FEAT_INSTALL_ROOT
+			__del_folder "${FEAT_INSTALL_ROOT}"
 
-			__push_schema_context
+			case $FEAT_BUNDLE in
+				PROXY|MERGE_LIST|MERGE|NESTED )
+					# There is nothing more than the FEAT_INSTALL_ROOT to erase
+					;;
 
+				LIST )
+					__push_schema_context
+					FEAT_BUNDLE_MODE="$FEAT_BUNDLE"
+					local _flags=
+					case $FEAT_BUNDLE_MODE in
+						LIST|MERGE_LIST|NESTED|MERGE|PROXY )
+							_flags="HIDDEN NON_DECLARED"
+							;;
+					esac
 
-			FEAT_BUNDLE_MODE="$FEAT_BUNDLE"
-			local _flags=
-			case $FEAT_BUNDLE_MODE in
-				LIST|MERGE_LIST|NESTED|MERGE )
-					_flags="HIDDEN NON_DECLARED"
+					for p in $FEAT_BUNDLE_ITEM; do
+						__feature_remove $p "$_flags"
+					done
+					FEAT_BUNDLE_MODE=
+					__pop_schema_context
 					;;
 			esac
-
-			for p in $FEAT_BUNDLE_ITEM; do
-				__feature_remove $p "$_flags"
-			done
-			FEAT_BUNDLE_MODE=
-			__pop_schema_context
+			
 		else
 			__log "DEBUG" " ** Remove $FEAT_NAME version $FEAT_VERSION from $FEAT_INSTALL_ROOT"
 			__del_folder $FEAT_INSTALL_ROOT
@@ -582,19 +560,20 @@ __feature_install() {
 	local a
 
 	__internal_feature_context "$_SCHEMA"
+
 	if [ ! "$FEAT_SCHEMA_OS_RESTRICTION" = "" ]; then
 		if [ ! "$FEAT_SCHEMA_OS_RESTRICTION" = "$STELLA_CURRENT_OS" ]; then
-			__log "INFO" " $_SCHEMA not installed on $STELLA_CURRENT_OS"
+			__log "INFO" " $_SCHEMA cannot be installed on $STELLA_CURRENT_OS"
 			return
 		fi
 	fi
 	if [ ! "$FEAT_SCHEMA_OS_EXCLUSION" = "" ]; then
 		if [ "$FEAT_SCHEMA_OS_EXCLUSION" = "$STELLA_CURRENT_OS" ]; then
-			__log "INFO" " $_SCHEMA not installed on $STELLA_CURRENT_OS"
+			__log "INFO" " $_SCHEMA cannot be installed on $STELLA_CURRENT_OS"
 			return
 		fi
 	fi
-
+echo FEAT_SCHEMA_SELECTED $FEAT_SCHEMA_SELECTED
 	if [ ! "$FEAT_SCHEMA_SELECTED" = "" ]; then
 
 
@@ -618,13 +597,13 @@ __feature_install() {
 			TEST_FEATURE=0
 			if [ "$_export_mode" = "OFF" ]; then
 				if [ "$_portable_mode" = "OFF" ]; then
+				 	#	TODO : call feature remove ? 
 					__del_folder $FEAT_INSTALL_ROOT
 				fi
 			fi
 		else
 			__feature_inspect "$FEAT_SCHEMA_SELECTED"
 		fi
-
 
 		if [ "$TEST_FEATURE" = "0" ]; then
 
@@ -701,14 +680,15 @@ __feature_install() {
 						FORCE=0
 					fi
 
-					# should be  MERGE or NESTED or LIST or MERGE_LIST
-					# NESTED : each item will be installed inside the bundle path in a separate directory (with each feature name but without version) (bundle_name/bunle_version/item_name)
-					# MERGE : each item will be installed in the bundle path (without each feature name/version)
-					# LIST : this bundle is just a list of items that will be installed normally (without bundle name nor version in path: item_name/item_version )
-					# MERGE_LIST : this bundle is a list of items that will be installed in a MERGED way (without bundle name nor version AND without each feature name/version)
+					# should be MERGE or NESTED or LIST or MERGE_LIST or PROXY
+					# NESTED : [feat_bundle_name/feat_bundle_version/feat_bundle_item_name/feat files] each item will be installed inside the bundle path (bundle_name/bundle_version) in a separate directory without feat version
+					# MERGE : [feat_bundle_name/feat_bundle_version/feat files] each item will be installed in the bundle path (bundle_name/bundle_version) but without each feature name/version
+					# PROXY :[feat_bundle_name/feat_bundle_item_version/feat files]  only one item will be installed in the bundle path but with feat version (bundle_name/feat_version) and without any other feature subfolder
+					# LIST : this bundle is just a list of item that will be installed normally
+					# MERGE_LIST : [feat_bundle_name/feat files] this bundle is a list of items that will be installed in a MERGED way (without bundle name nor version AND without each feature name/version)
 					local _flags
 					case $FEAT_BUNDLE_MODE in
-						LIST|MERGE_LIST|NESTED|MERGE )
+						LIST|MERGE_LIST|NESTED|MERGE|PROXY )
 							_flags="HIDDEN NON_DECLARED"
 							;;
 					esac
@@ -716,7 +696,7 @@ __feature_install() {
 
 					local _item=
 					for _item in $FEAT_BUNDLE_ITEM; do
-						__feature_install $_item "$_OPT $_flags"
+						__feature_install "${_item}" "$_OPT $_flags"
 					done
 
 					if [ ! "$FEAT_BUNDLE_MODE" = "LIST" ]; then
@@ -745,8 +725,12 @@ __feature_install() {
 				[ "$FEAT_SCHEMA_FLAVOUR" = "source" ] && __start_build_session
 				feature_"$FEAT_NAME"_install_"$FEAT_SCHEMA_FLAVOUR"
 
+				if [ "${FEAT_BUNDLE_MODE}" = "PROXY" ]; then
+					echo "${FEAT_NAME}" > "${FEAT_INSTALL_ROOT}/${FEAT_VERSION}.stella"
+				fi
+
 				# Sometimes current directory is lost by the system. For example when deleting source folder at the end of the install recipe
-				cd $STELLA_APP_ROOT
+				cd "${STELLA_APP_ROOT}" || exit 1
 
 			fi
 
@@ -761,7 +745,7 @@ __feature_install() {
 						__log "INFO" "** Error while installing feature $FEAT_SCHEMA_SELECTED"
 						#__del_folder $FEAT_INSTALL_ROOT
 						# Sometimes current directory is lost by the system
-						cd "$STELLA_APP_ROOT"
+						cd "${STELLA_APP_ROOT}" || exit 1
 					fi
 				fi
 			fi
@@ -816,13 +800,36 @@ __feature_init_installed() {
 				_tested_feat_name="$(__get_filename_from_string $f)"
 				# check for official feature
 				if [[ " ${__STELLA_FEATURE_LIST[@]} " =~ " ${_tested_feat_name} " ]]; then
+					
+					# TODO CONTINUE HERE
+					for __bundle in "$f/"bundle.*.stella; do
+						case $__bundle in 
+							bundle.merge.stella|bundle.nested.stella )
+								__init_item="$_tested_feat_name"
+							;;
+
+							bundle.proxy.stella )
+							;;
+
+							bundle.merge_list.stella|bundle.merge_list.stella )
+							;;
+							
+							* )
+								__init_item="$_tested_feat_name"
+							;;
+
+						esac
+
+					done
+					
 					# for each detected version
 					for v in  "$f"/*; do
 						if [ -d "$v" ]; then
 							_tested_feat_ver="$(__get_filename_from_string $v)"
 							# TODO : internal feature (installed in stella root) should be hidden in active feature list or not ?
 							#__feature_init "$_tested_feat_name#$_tested_feat_ver" "HIDDEN"
-							__feature_init "$_tested_feat_name#$_tested_feat_ver"
+							#__feature_init "$_tested_feat_name#$_tested_feat_ver"
+							__feature_init "$__init_item#$_tested_feat_ver"
 						fi
 					done
 				fi
@@ -885,6 +892,55 @@ __feature_callback() {
 	fi
 }
 
+
+# set variable of a bundle proxy recipe
+__feature_bundle_proxy() {
+	local _feature_name="$1"
+
+	if [ ! "${!_feature_name}" = "" ]; then
+		__list_contains "${FEAT_BUNDLE_PROXY_LIST}" "${!_feature_name}"
+		if [ $? -ne 0 ]; then
+			__log "ERROR" "$FEAT_NAME is a proxy feature. ${!_feature_name} is not one of \"$FEAT_BUNDLE_PROXY_LIST\""; \
+			exit 1;
+		fi
+		FEAT_BUNDLE_PROXY_SELECTED="${!_feature_name}"
+	else
+		FEAT_BUNDLE_PROXY_SELECTED="${FEAT_BUNDLE_PROXY_DEFAULT}" 
+	fi
+echo XXX $FEAT_BUNDLE_PROXY_SELECTED
+	# load proxyfied feature
+	local _proxy_feat_found="0"
+	if [ ! -z "$STELLA_FEATURE_RECIPE_EXTRA" ]; then
+		if [ -f "$STELLA_FEATURE_RECIPE_EXTRA/feature_$FEAT_BUNDLE_PROXY_SELECTED.sh" ]; then
+			. "$STELLA_FEATURE_RECIPE_EXTRA/feature_$FEAT_BUNDLE_PROXY_SELECTED.sh"
+			_proxy_feat_found="1"
+		fi
+	fi
+	if [ "$_proxy_feat_found" = "0" ]; then
+		if [ -f "$STELLA_FEATURE_RECIPE/feature_$FEAT_BUNDLE_PROXY_SELECTED.sh" ]; then
+			. "$STELLA_FEATURE_RECIPE/feature_$FEAT_BUNDLE_PROXY_SELECTED.sh"
+			_proxy_feat_found="1"
+		else
+			if [ -f "$STELLA_FEATURE_RECIPE_EXPERIMENTAL/feature_$FEAT_BUNDLE_PROXY_SELECTED.sh" ]; then
+				. "$STELLA_FEATURE_RECIPE_EXPERIMENTAL/feature_$FEAT_BUNDLE_PROXY_SELECTED.sh"
+				_proxy_feat_found="1"
+			fi
+		fi
+	fi
+	if [ "${_proxy_feat_found}" = "1" ]; then
+		feature_${FEAT_BUNDLE_PROXY_SELECTED}
+		# reset FEAT_NAME and FEAT_BUNDLE because they were erased by calling the feature function of the proxified item
+		FEAT_NAME="${_feature_name}"
+		FEAT_BUNDLE="PROXY"
+
+		for s in ${FEAT_LIST_SCHEMA}; do
+			__translate_schema "${FEAT_NAME}#${s}" "__temp_name" "__temp_ver" "__temp_arch"
+			eval "feature_${__temp_name}_${__temp_ver}() { FEAT_INSTALL_TEST=; FEAT_VERSION=\"${__temp_ver}\"; [ \"${__temp_arch}\" = \"\" ] && FEAT_BUNDLE_ITEM=\"${FEAT_BUNDLE_PROXY_SELECTED}#${s}\" || FEAT_BUNDLE_ITEM_${__temp_arch}=\"${FEAT_BUNDLE_PROXY_SELECTED}#${s}\";}"
+		done
+	fi	
+}	
+
+
 # init feature context (properties, variables, ...)
 __internal_feature_context() {
 	local _SCHEMA="$1"
@@ -923,8 +979,10 @@ __internal_feature_context() {
 	FEAT_ENV_CALLBACK=
 	FEAT_BUNDLE_ITEM=
 	FEAT_BUNDLE_CALLBACK=
-	# MERGE / NESTED / LIST / MERGE_LIST
 	FEAT_BUNDLE=
+	FEAT_BUNDLE_PROXY_DEFAULT=
+	FEAT_BUNDLE_PROXY_LIST=
+	FEAT_BUNDLE_PROXY_SELECTED=
 
 
 	if [ "$_SCHEMA" = "" ]; then
@@ -935,10 +993,11 @@ __internal_feature_context() {
 		#__select_official_schema_old "$_SCHEMA" "FEAT_SCHEMA_SELECTED" "TMP_FEAT_SCHEMA_NAME" "TMP_FEAT_SCHEMA_VERSION" "FEAT_ARCH" "FEAT_SCHEMA_FLAVOUR" "FEAT_SCHEMA_OS_RESTRICTION" "FEAT_SCHEMA_OS_EXCLUSION"
 		__select_official_schema "$_SCHEMA" "FEAT_SCHEMA_SELECTED" "TMP_FEAT_SCHEMA_NAME" "TMP_FEAT_SCHEMA_VERSION" "FEAT_ARCH" "FEAT_SCHEMA_FLAVOUR" "FEAT_SCHEMA_OS_RESTRICTION" "FEAT_SCHEMA_OS_EXCLUSION"
 	fi
-
+echo __internal_feature_context FEAT_SCHEMA_SELECTED $FEAT_SCHEMA_SELECTED
 	if [ ! "$FEAT_SCHEMA_SELECTED" = "" ]; then
 
-		# set install root (FEAT_INSTALL_ROOT)
+		# set install root (FEAT_INSTALL_ROOT) for current item of a bundle
+		# when FEAT_BUNDLE_MODE is setted, then we are inside a bundle, parsing an item of the bundle
 		if [ "$FEAT_BUNDLE_MODE" = "" ]; then
 			if [ ! "$FEAT_ARCH" = "" ]; then
 				FEAT_INSTALL_ROOT="$STELLA_APP_FEATURE_ROOT"/"$TMP_FEAT_SCHEMA_NAME"/"$TMP_FEAT_SCHEMA_VERSION"@"$FEAT_ARCH"
@@ -948,6 +1007,9 @@ __internal_feature_context() {
 		else
 
 			if [ "$FEAT_BUNDLE_MODE" = "MERGE" ]; then
+				FEAT_INSTALL_ROOT="$FEAT_BUNDLE_PATH"
+			fi
+			if [ "$FEAT_BUNDLE_MODE" = "PROXY" ]; then
 				FEAT_INSTALL_ROOT="$FEAT_BUNDLE_PATH"
 			fi
 			if [ "$FEAT_BUNDLE_MODE" = "NESTED" ]; then
@@ -961,7 +1023,7 @@ __internal_feature_context() {
 				fi
 			fi
 			if [ "$FEAT_BUNDLE_MODE" = "MERGE_LIST" ]; then
-				FEAT_INSTALL_ROOT="$STELLA_APP_FEATURE_ROOT"
+				FEAT_INSTALL_ROOT="$FEAT_BUNDLE_PATH"
 			fi
 		fi
 
@@ -969,33 +1031,53 @@ __internal_feature_context() {
 		local _feat_found="0"
 		if [ ! -z "$STELLA_FEATURE_RECIPE_EXTRA" ]; then
 			if [ -f "$STELLA_FEATURE_RECIPE_EXTRA/feature_$TMP_FEAT_SCHEMA_NAME.sh" ]; then
+				# shellcheck disable=1090
 				. "$STELLA_FEATURE_RECIPE_EXTRA/feature_$TMP_FEAT_SCHEMA_NAME.sh"
 				_feat_found="1"
 			fi
 		fi
 		if [ "$_feat_found" = "0" ]; then
 			if [ -f "$STELLA_FEATURE_RECIPE/feature_$TMP_FEAT_SCHEMA_NAME.sh" ]; then
+				# shellcheck disable=1090
 				. "$STELLA_FEATURE_RECIPE/feature_$TMP_FEAT_SCHEMA_NAME.sh"
 				_feat_found="1"
 			else
 				if [ -f "$STELLA_FEATURE_RECIPE_EXPERIMENTAL/feature_$TMP_FEAT_SCHEMA_NAME.sh" ]; then
+					# shellcheck disable=1090
 					. "$STELLA_FEATURE_RECIPE_EXPERIMENTAL/feature_$TMP_FEAT_SCHEMA_NAME.sh"
 					_feat_found="1"
 				fi
 			fi
 		fi
+
 		if [ "$_feat_found" = "1" ]; then
 			feature_$TMP_FEAT_SCHEMA_NAME
-			feature_"$TMP_FEAT_SCHEMA_NAME"_"$TMP_FEAT_SCHEMA_VERSION"
 		fi
 
-		# bundle path
+		# bundle path - determine root install path of a bundle
+		# when FEAT_BUNDLE is setted, then we are on a bundle, parsing a bundle recipe
 		if [ ! "$FEAT_BUNDLE" = "" ]; then
-			if [ "$FEAT_BUNDLE" = "LIST" ]; then
-				FEAT_BUNDLE_PATH=
-			else
-				FEAT_BUNDLE_PATH="$FEAT_INSTALL_ROOT"
-			fi
+			case $FEAT_BUNDLE in
+				LIST )
+					FEAT_BUNDLE_PATH=
+				;;
+				MERGE_LIST )
+					FEAT_BUNDLE_PATH="$STELLA_APP_FEATURE_ROOT"/"$TMP_FEAT_SCHEMA_NAME"
+				;;
+
+				PROXY )
+					FEAT_BUNDLE_PATH="$FEAT_INSTALL_ROOT"
+					__feature_bundle_proxy "$TMP_FEAT_SCHEMA_NAME"
+				;;
+
+				* )
+					FEAT_BUNDLE_PATH="$FEAT_INSTALL_ROOT"
+				;;
+			esac
+		fi
+
+		if [ "$_feat_found" = "1" ]; then
+			feature_"$TMP_FEAT_SCHEMA_NAME"_"$TMP_FEAT_SCHEMA_VERSION"
 		fi
 
 		# set url dependending on arch
@@ -1018,202 +1100,6 @@ __internal_feature_context() {
 	fi
 }
 
-
-
-# select an official schema
-# pick a feature schema by filling some values with default one
-# and may return split schema properties
-# __select_official_schema_old() {
-# 	local _SCHEMA="$1"
-# 	local _RESULT_SCHEMA="$2"
-#
-# 	local _VAR_FEATURE_NAME="$3"
-# 	local _VAR_FEATURE_VER="$4"
-# 	local _VAR_FEATURE_ARCH="$5"
-# 	local _VAR_FEATURE_FLAVOUR="$6"
-# 	local _VAR_FEATURE_OS_RESTRICTION="$7"
-# 	local _VAR_FEATURE_OS_EXCLUSION="$8"
-#
-# 	local _FILLED_SCHEMA=
-#
-#
-#  	if [ ! "$_RESULT_SCHEMA" = "" ]; then
-# 		eval $_RESULT_SCHEMA=
-# 	fi
-#
-#  	# __translate_schema "$_SCHEMA" "$_VAR_FEATURE_NAME" "$_VAR_FEATURE_VER" "$_VAR_FEATURE_ARCH" "$_VAR_FEATURE_FLAVOUR" "$_VAR_FEATURE_OS_RESTRICTION" "$_VAR_FEATURE_OS_EXCLUSION"
-# 	__translate_schema "$_SCHEMA" "$3" "$4" "$5" "$6" "$7" "$8"
-#
-# 	local _TR_FEATURE_NAME=${!_VAR_FEATURE_NAME}
-# 	local _TR_FEATURE_VER=${!_VAR_FEATURE_VER}
-# 	local _TR_FEATURE_ARCH=${!_VAR_FEATURE_ARCH}
-# 	local _TR_FEATURE_FLAVOUR=${!_VAR_FEATURE_FLAVOUR}
-# 	local _TR_FEATURE_OS_RESTRICTION=${!_VAR_FEATURE_OS_RESTRICTION}
-# 	local _TR_FEATURE_OS_EXCLUSION=${!_VAR_FEATURE_OS_EXCLUSION}
-# 	local _official=0
-# 	if [[ " ${__STELLA_FEATURE_LIST[@]} " =~ " ${_TR_FEATURE_NAME} " ]]; then
-# 		# grab feature info
-# 		local _feat_found=0
-# 		if [ ! -z "$STELLA_FEATURE_RECIPE_EXTRA" ]; then
-# 			if [ -f "$STELLA_FEATURE_RECIPE_EXTRA/feature_$_TR_FEATURE_NAME.sh" ]; then
-# 				. "$STELLA_FEATURE_RECIPE_EXTRA/feature_$_TR_FEATURE_NAME.sh"
-# 				_feat_found=1
-# 			fi
-# 		fi
-# 		if [ "$_feat_found" = "0" ]; then
-# 			if [ -f "$STELLA_FEATURE_RECIPE/feature_$_TR_FEATURE_NAME.sh" ]; then
-# 				. "$STELLA_FEATURE_RECIPE/feature_$_TR_FEATURE_NAME.sh"
-# 				_feat_found=1
-# 			else
-# 				if [ -f "$STELLA_FEATURE_RECIPE_EXPERIMENTAL/feature_$_TR_FEATURE_NAME.sh" ]; then
-# 					. "$STELLA_FEATURE_RECIPE_EXPERIMENTAL/feature_$_TR_FEATURE_NAME.sh"
-# 					_feat_found=1
-# 				fi
-# 			fi
-# 		fi
-# 		if [ "$_feat_found" = "1" ]; then
-# 			# load feature properties
-# 			feature_$_TR_FEATURE_NAME
-# 		fi
-#
-#
-# 		local list_version=
-# 		local k
-# 		for k in $FEAT_LIST_SCHEMA; do
-# 			__translate_schema "${_TR_FEATURE_NAME}#${k}" "NONE" "_TMP_V"
-# 			list_version="$list_version $_TMP_V"
-# 		done
-# 		# select last available version by default
-# 		if [ "${_TR_FEATURE_VER}" = "" ]; then
-# 			# TODO use ENDING_CHAR_REVERSE for some feature in a new FIELD (like FEAT_VERSION_ORDER)
-# 			_TR_FEATURE_VER="$(__get_last_version "$list_version" "SEP _")"
-# 			[ ! "$_VAR_FEATURE_VER" = "" ] && eval $_VAR_FEATURE_VER=$_TR_FEATURE_VER
-# 		else
-# 			# find version from the list
-# 			_TR_FEATURE_VER="$(__select_version_from_list "${_TR_FEATURE_VER}" "${list_version}" "SEP _")"
-# 			# NOTE : if _TR_FEATURE_VER is empty here, its because we cannot find a matching version
-# 			[ ! "$_VAR_FEATURE_VER" = "" ] && eval $_VAR_FEATURE_VER=$_TR_FEATURE_VER
-# 		fi
-#
-# 		_FILLED_SCHEMA="${_TR_FEATURE_NAME}#${_TR_FEATURE_VER}"
-#
-# 		# ADDING OS restriction and OS exclusion
-# 		_OS_OPTION=
-# 		[ ! "$_TR_FEATURE_OS_RESTRICTION" = "" ] && _OS_OPTION="$_OS_OPTION/$_TR_FEATURE_OS_RESTRICTION"
-# 		[ ! "$_TR_FEATURE_OS_EXCLUSION" = "" ] && _OS_OPTION="$_OS_OPTION"\\\\"$_TR_FEATURE_OS_EXCLUSION"
-#
-#
-#
-# 		# check schema exists
-# 		# we already know which version to find
-# 		# we are looking for different arch and flavour
-# 		# if we are looking for a bundle, only arch is used. There is no flavour support for bundle
-# 		# starting with specified ones, then with default ones, then with possible ones
-# 		# NOTE : version must exist and take precedence on flavour which take precedence on arch
-# 		local _looking_arch
-# 		local _looking_flavour
-#
-# 		if [ "$_TR_FEATURE_ARCH" = "" ]; then
-# 			# arch could have absolutely no info specified in default value and FEAT_LIST_SCHEMA
-# 			# so we do not have to look for any value
-# 			[ ! "$FEAT_DEFAULT_ARCH" = "" ] && _looking_arch="$FEAT_DEFAULT_ARCH x64 x86"
-# 		else
-# 			_looking_arch="$_TR_FEATURE_ARCH"
-# 		fi
-#
-# 		local l
-# 		local a
-# 		local f
-#
-# 		# bundle might have arch, but no flavour
-# 		if [ ! "$FEAT_BUNDLE" = "" ]; then
-# 			# arch is not always presents in FEAT_LIST_SCHEMA and could not have default value
-# 			if [ "$_looking_arch" = "" ]; then
-# 				for l in $FEAT_LIST_SCHEMA; do
-# 					if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA" ]; then
-# 						[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-# 					fi
-# 					[ "$_official" = "1" ] && break
-# 				done
-# 			else
-# 				for a in $_looking_arch; do
-# 					for l in $FEAT_LIST_SCHEMA; do
-# 						if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA"@"$a" ]; then
-# 							[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-# 						fi
-# 						[ "$_official" = "1" ] && break
-# 					done
-# 					[ "$_official" = "1" ] && break
-# 				done
-# 			fi
-# 		else
-#
-#
-# 			# flavour is always presents in FEAT_LIST_SCHEMA but not for bundle
-# 			if [ "$_TR_FEATURE_FLAVOUR" = "" ]; then
-# 				_looking_flavour="$FEAT_DEFAULT_FLAVOUR binary source"
-# 			else
-# 				_looking_flavour="$_TR_FEATURE_FLAVOUR"
-# 			fi
-#
-# 			for f in $_looking_flavour; do
-# 				# we do not look for any arch while searching source flavour
-# 				# arch is not used when schema contains source,
-# 				# only used for binary flavour
-# 				if [ "$f" = "source" ]; then
-# 					for l in $FEAT_LIST_SCHEMA; do
-# 						if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA":"$f" ]; then
-# 							[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-# 						fi
-# 						[ "$_official" = "1" ] && break
-# 					done
-# 				else
-# 					# arch is not always presents in FEAT_LIST_SCHEMA and could not have default value
-# 					if [ "$_looking_arch" = "" ]; then
-# 						for l in $FEAT_LIST_SCHEMA; do
-# 							if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA":"$f" ]; then
-# 								[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-# 							fi
-# 							[ "$_official" = "1" ] && break
-# 						done
-# 					else
-# 						for a in $_looking_arch; do
-# 							for l in $FEAT_LIST_SCHEMA; do
-# 								if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA"@"$a":"$f" ]; then
-# 									[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-# 								fi
-# 								[ "$_official" = "1" ] && break
-# 							done
-# 							[ "$_official" = "1" ] && break
-# 						done
-# 					fi
-# 				fi
-# 				[ "$_official" = "1" ] && break
-# 			done
-# 		fi
-#
-# 		if 	[ "$_official" = "1" ]; then
-# 			[ ! "$a" = "" ] && _FILLED_SCHEMA="$_FILLED_SCHEMA"@"$a"
-# 			[ ! "$f" = "" ] && _FILLED_SCHEMA="$_FILLED_SCHEMA":"$f"
-#
-# 			[ ! "$_VAR_FEATURE_ARCH" = "" ] && eval $_VAR_FEATURE_ARCH="$a"
-# 			[ ! "$_VAR_FEATURE_FLAVOUR" = "" ] && eval $_VAR_FEATURE_FLAVOUR="$f"
-# 		fi
-# 	fi
-#
-# 	if [ "$_official" = "1" ]; then
-# 		eval $_RESULT_SCHEMA=$_FILLED_SCHEMA$_OS_OPTION
-# 	else
-# 		# not official so empty split values
-# 		[ ! "$_VAR_FEATURE_NAME" = "" ] && eval $_VAR_FEATURE_NAME=
-# 		[ ! "$_VAR_FEATURE_VER" = "" ] && eval $_VAR_FEATURE_VER=
-# 		[ ! "$_VAR_FEATURE_ARCH" = "" ] && eval $_VAR_FEATURE_ARCH=
-# 		[ ! "$_VAR_FEATURE_FLAVOUR" = "" ] && eval $_VAR_FEATURE_FLAVOUR=
-# 		[ ! "$_VAR_FEATURE_OS_RESTRICTION" = "" ] && eval $_VAR_FEATURE_OS_RESTRICTION=
-# 		[ ! "$_VAR_FEATURE_OS_EXCLUSION" = "" ] && eval $_VAR_FEATURE_OS_EXCLUSION=
-# 	fi
-#
-# }
 
 # select an official schema
 # pick a feature schema by filling some values with default one
@@ -1269,9 +1155,11 @@ __select_official_schema() {
 				fi
 			fi
 		fi
+
 		if [ "$_feat_found" = "1" ]; then
 			# load feature properties
 			feature_$_TR_FEATURE_NAME
+			[ "${FEAT_BUNDLE}" = "PROXY" ] && __feature_bundle_proxy "${_TR_FEATURE_NAME}"
 			[ ! "$_VAR_FEATURE_NAME" = "" ] && eval $_VAR_FEATURE_NAME=${_TR_FEATURE_NAME}
 		fi
 
@@ -1341,7 +1229,12 @@ __select_official_schema() {
 		if [ "$_TR_FEATURE_ARCH" = "" ]; then
 			# arch could have absolutely no info specified in default value and FEAT_LIST_SCHEMA
 			# so we do not have to look for any value
-			[ ! "$FEAT_DEFAULT_ARCH" = "" ] && _looking_arch="$FEAT_DEFAULT_ARCH x64 x86"
+			case $FEAT_DEFAULT_ARCH in
+				x64 ) _looking_arch="$FEAT_DEFAULT_ARCH x86"
+				;;
+				x86 ) _looking_arch="$FEAT_DEFAULT_ARCH x64"
+				;;
+			esac
 		else
 			_looking_arch="$_TR_FEATURE_ARCH"
 		fi
@@ -1350,54 +1243,54 @@ __select_official_schema() {
 		local a
 		local f
 
-		# bundle might have arch, but no flavour
-		if [ ! "$FEAT_BUNDLE" = "" ]; then
-			# arch is not always presents in FEAT_LIST_SCHEMA and could not have default value
-			if [ "$_looking_arch" = "" ]; then
-				for l in $FEAT_LIST_SCHEMA; do
-					if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA" ]; then
-						#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-						_official=1
-					fi
-					[ "$_official" = "1" ] && break
-				done
-			else
-				for a in $_looking_arch; do
+		case $FEAT_BUNDLE in
+			MERGE|MERGE_LIST|LIST|NESTED )
+				# bundle might have arch, but no flavour, except PROXY
+				# arch is not always presents in FEAT_LIST_SCHEMA and could not have default value
+				if [ "$_looking_arch" = "" ]; then
 					for l in $FEAT_LIST_SCHEMA; do
-						if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA"@"$a" ]; then
-							#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
-							_official=1
-						fi
-						[ "$_official" = "1" ] && break
-					done
-					[ "$_official" = "1" ] && break
-				done
-			fi
-		else
-
-
-			# flavour is always presents in FEAT_LIST_SCHEMA but not for bundle
-			if [ "$_TR_FEATURE_FLAVOUR" = "" ]; then
-				_looking_flavour="$FEAT_DEFAULT_FLAVOUR binary source"
-			else
-				_looking_flavour="$_TR_FEATURE_FLAVOUR"
-			fi
-
-			for f in $_looking_flavour; do
-				# we do not look for any arch while searching source flavour
-				# arch is not used when schema contains source,
-				# only used for binary flavour
-				if [ "$f" = "source" ]; then
-					for l in $FEAT_LIST_SCHEMA; do
-						if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA":"$f" ]; then
+						if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA" ]; then
 							#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
 							_official=1
 						fi
 						[ "$_official" = "1" ] && break
 					done
 				else
-					# arch is not always presents in FEAT_LIST_SCHEMA and could not have default value
-					if [ "$_looking_arch" = "" ]; then
+					for a in $_looking_arch; do
+						for l in $FEAT_LIST_SCHEMA; do
+						echo UUUUUU ${_TR_FEATURE_NAME}\#${l} = "$_FILLED_SCHEMA"@"$a"
+							if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA"@"$a" ]; then
+								#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
+								_official=1
+							fi
+							echo _official $_official
+							[ "$_official" = "1" ] && break
+						done
+						[ "$_official" = "1" ] && break
+					done
+				fi
+			;;
+
+			PROXY|* )
+				# flavour is always presents in FEAT_LIST_SCHEMA but not for bundle except PROXY BUNDLE
+				if [ "$_TR_FEATURE_FLAVOUR" = "" ]; then
+					case $FEAT_DEFAULT_FLAVOUR in
+						binary ) _looking_flavour="$FEAT_DEFAULT_FLAVOUR source"
+						;;
+						source ) _looking_flavour="$FEAT_DEFAULT_FLAVOUR binary"
+						;;
+						* ) _looking_flavour="binary source"
+						;;
+					esac
+				else
+					_looking_flavour="$_TR_FEATURE_FLAVOUR"
+				fi
+
+				for f in $_looking_flavour; do
+					# we do not look for any arch while searching source flavour
+					# arch is not used when schema contains source,
+					# only used for binary flavour
+					if [ "$f" = "source" ]; then
 						for l in $FEAT_LIST_SCHEMA; do
 							if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA":"$f" ]; then
 								#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
@@ -1406,21 +1299,33 @@ __select_official_schema() {
 							[ "$_official" = "1" ] && break
 						done
 					else
-						for a in $_looking_arch; do
+						# arch is not always presents in FEAT_LIST_SCHEMA and could not have default value
+						if [ "$_looking_arch" = "" ]; then
 							for l in $FEAT_LIST_SCHEMA; do
-								if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA"@"$a":"$f" ]; then
+								if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA":"$f" ]; then
 									#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
 									_official=1
 								fi
 								[ "$_official" = "1" ] && break
 							done
-							[ "$_official" = "1" ] && break
-						done
+						else
+							for a in $_looking_arch; do
+								for l in $FEAT_LIST_SCHEMA; do
+									if [ "${_TR_FEATURE_NAME}#${l}" = "$_FILLED_SCHEMA"@"$a":"$f" ]; then
+										#[ ! "$_RESULT_SCHEMA" = "" ] && _official=1
+										_official=1
+									fi
+									[ "$_official" = "1" ] && break
+								done
+								[ "$_official" = "1" ] && break
+							done
+						fi
 					fi
-				fi
-				[ "$_official" = "1" ] && break
-			done
-		fi
+					[ "$_official" = "1" ] && break
+				done
+			;;
+		esac
+
 
 		if 	[ "$_official" = "1" ]; then
 			[ ! "$a" = "" ] && _FILLED_SCHEMA="$_FILLED_SCHEMA"@"$a"
@@ -1433,7 +1338,7 @@ __select_official_schema() {
 
 	if [ "$_official" = "1" ]; then
 		eval $_RESULT_SCHEMA=$_FILLED_SCHEMA$_OS_OPTION
-		__translate_schema "$_SCHEMA" "" "_TR_FEATURE_VER" "_TR_FEATURE_ARCH" "_TR_FEATURE_FLAVOUR" "_TR_FEATURE_OS_RESTRICTION" "_TR_FEATURE_OS_EXCLUSION"
+		__translate_schema "${!_RESULT_SCHEMA}" "_VAR_FEATURE_NAME" "_VAR_FEATURE_VER" "_VAR_FEATURE_ARCH" "_VAR_FEATURE_FLAVOUR" "_VAR_FEATURE_OS_RESTRICTION" "_VAR_FEATURE_OS_EXCLUSION"
 
 	else
 		[ ! "$_RESULT_SCHEMA" = "" ] && eval $_RESULT_SCHEMA=
@@ -1445,7 +1350,6 @@ __select_official_schema() {
 		[ ! "$_VAR_FEATURE_OS_RESTRICTION" = "" ] && eval $_VAR_FEATURE_OS_RESTRICTION=
 		[ ! "$_VAR_FEATURE_OS_EXCLUSION" = "" ] && eval $_VAR_FEATURE_OS_EXCLUSION=
 	fi
-
 }
 
 
@@ -1539,22 +1443,22 @@ __file5() {
 
 
 
-__binutils() {
-	#TODO configure flag
-	URL=http://ftp.gnu.org/gnu/binutils/binutils-2.23.2.tar.bz2
-	VER=2.23.2
-	FILE_NAME=binutils-2.23.2.tar.bz2
-	INSTALL_DIR="$STELLA_APP_FEATURE_ROOT/cross-tools"
-	SRC_DIR="$STELLA_APP_FEATURE_ROOT/binutils-$VER-src"
-	BUILD_DIR="$STELLA_APP_FEATURE_ROOT/binutils-$VER-build"
+# __binutils() {
+# 	#TODO configure flag
+# 	URL=http://ftp.gnu.org/gnu/binutils/binutils-2.23.2.tar.bz2
+# 	VER=2.23.2
+# 	FILE_NAME=binutils-2.23.2.tar.bz2
+# 	INSTALL_DIR="$STELLA_APP_FEATURE_ROOT/cross-tools"
+# 	SRC_DIR="$STELLA_APP_FEATURE_ROOT/binutils-$VER-src"
+# 	BUILD_DIR="$STELLA_APP_FEATURE_ROOT/binutils-$VER-build"
 
-	AUTO_INSTALL_FLAG_PREFIX="AR=ar AS=as"
-	AUTO_INSTALL_FLAG_POSTFIX="--host=$CROSS_HOST --target=$CROSS_TARGET \
-  	--with-sysroot=${CLFS} --with-lib-path=/tools/lib --disable-nls \
-  	--disable-static --enable-64-bit-bfd"
+# 	AUTO_INSTALL_FLAG_PREFIX="AR=ar AS=as"
+# 	AUTO_INSTALL_FLAG_POSTFIX="--host=$CROSS_HOST --target=$CROSS_TARGET \
+#   	--with-sysroot=${CLFS} --with-lib-path=/tools/lib --disable-nls \
+#   	--disable-static --enable-64-bit-bfd"
 
-	__auto_build "configure" "binutils" "$FILE_NAME" "$URL" "$SRC_DIR" "$BUILD_DIR" "$INSTALL_DIR" "STRIP"
-}
+# 	__auto_build "configure" "binutils" "$FILE_NAME" "$URL" "$SRC_DIR" "$BUILD_DIR" "$INSTALL_DIR" "STRIP"
+# }
 
 
 
