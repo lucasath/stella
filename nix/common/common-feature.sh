@@ -43,37 +43,102 @@ __feature_init() {
 			# parse dependencies to init them first
 			local dep
 			local _origin=
-			local _force_origin=
 			local _dependencies=
-			# TODO : we init all dependencies (not relying on feature flavour)
-			#	but it should be better to have FEAT_RUNTIME_DEPENDENCIES different from DEPENDENCIES while BUILDING (FEAT_SOURCE_DEPENDENCIES)
-			_dependencies="${FEAT_BINARY_DEPENDENCIES} ${FEAT_SOURCE_DEPENDENCIES}"
+			local _test
 			local _current_feat=${FEAT_SCHEMA_SELECTED}
 			__push_schema_context
 
-			for dep in $_dependencies; do
-				if [ "$dep" = "FORCE_ORIGIN_STELLA" ]; then
-					_force_origin="STELLA"
-					continue
-				fi
-				if [ "$dep" = "FORCE_ORIGIN_SYSTEM" ]; then
-					_force_origin="SYSTEM"
-					continue
-				fi
+			# NOTE : we init all dependencies (not relying on feature flavour)
+			# 		if some deps are missing, this might not be an error, because we try to init FEAT_SOURCE_DEPENDENCIES and FEAT_BINARY_DEPENDENCIES altogether
+			#		 mainly because we do not know if a feature have been installed from SOURCE or BINARY flavour
+			for _dependencies in FEAT_BINARY_DEPENDENCIES FEAT_SOURCE_DEPENDENCIES; do
 
-				if [ "$_force_origin" = "" ]; then
-					_origin="$(__feature_choose_origin $dep)"
-				else
-					_origin="$_force_origin"
-				fi
 
-				if [ "$_origin" = "STELLA" ]; then
-					__feature_init ${dep}
-					# if some deps are missing, this might not be an error, because we have merged FEAT_SOURCE_DEPENDENCIES and FEAT_BINARY_DEPENDENCIES
-					#if [ "$TEST_FEATURE" = "0" ]; then
-					#	__log "DEBUG" "** ${_current_feat} dependency $dep seems can not be initialized or is not installed."
-					#fi
-				fi
+				for dep in ${!_dependencies}; do
+					
+					_origin=
+
+					if [ "$dep" = "FORCE_ORIGIN_STELLA" ]; then
+						_origin="$dep"
+						continue
+					fi
+					if [ "$dep" = "FORCE_ORIGIN_SYSTEM" ]; then
+						_origin="$dep"
+						continue
+					fi
+
+					if [ "$dep" = "PREFER_ORIGIN_STELLA" ]; then
+						_origin="$dep"
+						continue
+					fi
+					if [ "$dep" = "PREFER_ORIGIN_SYSTEM" ]; then
+						_origin="$dep"
+						continue
+					fi
+
+					if [ "$_origin" = "" ]; then
+						_origin="$(__feature_choose_origin $dep)"
+					fi
+
+
+					if [ "$_origin" = "PREFER_ORIGIN_SYSTEM" ]; then
+						# look up dep in system
+						__feature_catalog_info "${dep}"
+						_test="$(which $FEAT_TEST 2>/dev/null)"
+						if [ "$_test" = "" ]; then
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) NOT found ===> Try to fallback on a STELLA recipe"
+							# look up dep as stella feature and init it
+							__feature_init ${dep}
+							if [ "$TEST_FEATURE" = "0" ]; then
+								__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) can not be initialized or is not installed. Which may be a problem or not."
+							else
+								__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) is used and initialized from STELLA."
+							fi
+						else
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) is used. Found in $_test."
+						fi
+					fi
+
+					if [ "$_origin" = "PREFER_ORIGIN_STELLA" ]; then
+						# look up dep as stella feature and init it
+						__feature_init "${dep}"
+						if [ "$TEST_FEATURE" = "0" ]; then
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) can not be initialized or is not installed. ===> Try to fallback on SYSTEM."
+							# look up dep in system
+							_test="$(which $FEAT_TEST 2>/dev/null)"
+							if [ "$_test" = "" ]; then
+								__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) NOT found. Which may be a problem or not."
+							else
+								__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) is used. Found in SYSTEM at $_test."
+							fi
+						else
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) is used and initialized."
+						fi
+					fi
+
+
+					if [ "$_origin" = "FORCE_ORIGIN_STELLA" ]; then
+						# look up dep as stella feature and init it
+						__feature_init "${dep}"
+						if [ "$TEST_FEATURE" = "0" ]; then
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) can not be initialized or is not installed. Which may be a problem or not."
+						else
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) is used and initialized."
+						fi
+					fi
+
+					if [ "$_force_origin" = "SYSTEM" ]; then
+						# look up dep in system
+						__feature_catalog_info "${dep}"
+						_test="$(which $FEAT_TEST 2>/dev/null)"
+						if [ "$_test" = "" ]; then
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) NOT found. Which may be a problem or not."
+						else
+							__log "DEBUG" "** ${_current_feat} : $dep dependency (mode : $_origin) is used. Found in SYSTEM at $_test."
+						fi
+					fi
+
+				done
 			done
 			__pop_schema_context
 
@@ -476,12 +541,9 @@ __feature_choose_origin() {
 	local _SCHEMA="$1"
 	__translate_schema "$_SCHEMA" "_CHOOSE_ORIGIN_FEATURE_NAME"
 
-	local _origin="STELLA"
-	for u in $STELLA_FEATURE_FROM_SYSTEM; do
-		[ "$u" = "$_CHOOSE_ORIGIN_FEATURE_NAME" ] && _origin="SYSTEM"
-	done
-
-	echo $_origin
+	__list_contains "${STELLA_FEATURE_FORCE_ORIGIN_FROM_SYSTEM}" "${_CHOOSE_ORIGIN_FEATURE_NAME}"
+	[ $? -eq 0 ] && echo "FORCE_ORIGIN_SYSTEM" || echo "FORCE_ORIGIN_STELLA"
+	
 }
 
 __feature_install() {
@@ -619,7 +681,6 @@ echo FEAT_SCHEMA_SELECTED $FEAT_SCHEMA_SELECTED
 				local dep
 
 				local _origin=
-				local _force_origin=
 				local _dependencies=
 				[ "$FEAT_SCHEMA_FLAVOUR" = "source" ] && _dependencies="$FEAT_SOURCE_DEPENDENCIES"
 				[ "$FEAT_SCHEMA_FLAVOUR" = "binary" ] && _dependencies="$FEAT_BINARY_DEPENDENCIES"
@@ -629,35 +690,96 @@ echo FEAT_SCHEMA_SELECTED $FEAT_SCHEMA_SELECTED
 
 				__push_schema_context
 
-				for dep in $_dependencies; do
 
+				for dep in $_dependencies; do
+					__log "INFO" "* Installing dependency $dep"
+					_origin=
+					
 					if [ "$dep" = "FORCE_ORIGIN_STELLA" ]; then
-						_force_origin="STELLA"
+						_origin="$dep"
 						continue
 					fi
 					if [ "$dep" = "FORCE_ORIGIN_SYSTEM" ]; then
-						_force_origin="SYSTEM"
+						_origin="$dep"
 						continue
 					fi
 
-					if [ "$_force_origin" = "" ]; then
-						_origin="$(__feature_choose_origin $dep)"
-					else
-						_origin="$_force_origin"
+					if [ "$dep" = "PREFER_ORIGIN_STELLA" ]; then
+						_origin="$dep"
+						continue
+					fi
+					if [ "$dep" = "PREFER_ORIGIN_SYSTEM" ]; then
+						_origin="$dep"
+						continue
 					fi
 
-					if [ "$_origin" = "STELLA" ]; then
-						__log "INFO" "Installing dependency $dep"
+					if [ "$_origin" = "" ]; then
+						_origin="$(__feature_choose_origin $dep)"
+					fi
 
+
+					if [ "$_origin" = "PREFER_ORIGIN_SYSTEM" ]; then
+						# look up dep in system
+						__feature_catalog_info "${dep}"
+						_test="$(which $FEAT_TEST 2>/dev/null)"
+						if [ "$_test" = "" ]; then
+							__log "WARN" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) NOT found ===> Try to fallback on a STELLA recipe"
+							# a dependency is not added to current app properties
+							__feature_install "$dep" "$_OPT NON_DECLARED"
+							if [ "$TEST_FEATURE" = "0" ]; then
+								__log "ERROR" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) can not be initialized or is not installed."
+								exit 1
+							else
+								__log "INFO" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) is installed and initialized from STELLA."
+							fi
+						else
+							__log "INFO" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) is used. Found in $_test."
+						fi
+					fi
+
+					if [ "$_origin" = "PREFER_ORIGIN_STELLA" ]; then
+						# a dependency is not added to current app properties
+						__feature_install "$dep" "$_OPT NON_DECLARED"
+						if [ "$TEST_FEATURE" = "0" ]; then
+							__log "WARN" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) can not be initialized or is not installed. ===> Try to fallback on SYSTEM."
+							# look up dep in system
+							_test="$(which $FEAT_TEST 2>/dev/null)"
+							if [ "$_test" = "" ]; then
+								__log "ERROR" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) NOT found."
+								exit 1
+							else
+								__log "INFO" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin)is used. Found in SYSTEM at $_test."
+							fi
+						else
+							__log "INFO" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) is installed and initialized."
+						fi
+					fi
+
+
+
+				
+					if [ "$_origin" = "FORCE_ORIGIN_STELLA" ]; then
 						# a dependency is not added to current app properties
 						__feature_install $dep "$_OPT NON_DECLARED"
 						if [ "$TEST_FEATURE" = "0" ]; then
-							__log "INFO" "** Error while installing dependency feature $FEAT_SCHEMA_SELECTED"
+							__log "ERROR" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) can not be initialized or is not installed."
+							exit 1
+						else
+							__log "INFO" "** ${FEAT_SCHEMA_SELECTED} : $dep dependency (mode : $_origin) is installed and initialized."
 						fi
-
 					fi
-					[ "$_origin" = "SYSTEM" ] && __log "INFO" "Using dependency $dep from SYSTEM."
 
+					if [ "$_origin" = "FORCE_ORIGIN_SYSTEM" ]; then
+						# look up dep in system
+						__feature_catalog_info "${dep}"
+						_test="$(which $FEAT_TEST 2>/dev/null)"
+						if [ "$_test" = "" ]; then
+							__log "INFO" "** ${_current_feat} : $dep dependency (mode : $_origin) NOT found. Which may be a problem or not."
+						else
+							__log "INFO" "** ${_current_feat} : $dep dependency (mode : $_origin) is used. Found in SYSTEM at $_test."
+						fi
+					fi
+					
 				done
 
 				__pop_schema_context
@@ -974,6 +1096,7 @@ __internal_feature_context() {
 	FEAT_BINARY_DEPENDENCIES=
 	FEAT_BINARY_CALLBACK=
 	FEAT_DEPENDENCIES=
+	FEAT_TEST=
 	FEAT_INSTALL_TEST=
 	FEAT_INSTALL_ROOT=
 	FEAT_SEARCH_PATH=
