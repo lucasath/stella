@@ -213,7 +213,7 @@ __feature_catalog_info() {
 # look for information about an installed feature
 __feature_match_installed() {
 	local _SCHEMA="$1"
-echo __feature_match_installed _SCHEMA $_SCHEMA
+
 	#local _tested=
 	local _version_selector=
 	local _version_matched=
@@ -313,7 +313,7 @@ echo __feature_match_installed _SCHEMA $_SCHEMA
 				STELLA_APP_FEATURE_ROOT=$STELLA_INTERNAL_FEATURE_ROOT
 			fi
 		fi
-echo _version_matched $_version_matched
+
 		if [ ! "${_version_matched}" = "" ]; then
 			
 			# TODO if internal replace STELLA_APP_FEATURE_ROOT with STELLA_INTERNAL_FEATURE_ROOT
@@ -451,7 +451,7 @@ __feature_remove() {
 		#[ "$o" = "HIDDEN" ] && _opt_hidden_feature=ON
 		[ "$o" = "NON_DECLARED" ] && _opt_non_declared_feature=ON
 	done
-echo __feature_remove $_SCHEMA FEAT_INSTALL_ROOT $FEAT_INSTALL_ROOT
+
 	__feature_inspect "$_SCHEMA"
 
 	if [ ! "$FEAT_SCHEMA_OS_RESTRICTION" = "" ]; then
@@ -481,8 +481,7 @@ echo __feature_remove $_SCHEMA FEAT_INSTALL_ROOT $FEAT_INSTALL_ROOT
 	#if [ ! "$_opt_hidden_feature" = "ON" ]; then
 		__remove_app_feature $_SCHEMA
 	fi
-echo __feature_remove TEST_FEATURE $TEST_FEATURE
-echo __feature_remove FEAT_BUNDLE $FEAT_BUNDLE
+
 	if [ "$TEST_FEATURE" = "1" ]; then
 
 		if [ ! "$FEAT_BUNDLE" = "" ]; then
@@ -636,7 +635,7 @@ __feature_install() {
 			return
 		fi
 	fi
-echo FEAT_SCHEMA_SELECTED $FEAT_SCHEMA_SELECTED
+
 	if [ ! "$FEAT_SCHEMA_SELECTED" = "" ]; then
 
 
@@ -1030,7 +1029,7 @@ __feature_bundle_proxy() {
 	else
 		FEAT_BUNDLE_PROXY_SELECTED="${FEAT_BUNDLE_PROXY_DEFAULT}" 
 	fi
-echo XXX $FEAT_BUNDLE_PROXY_SELECTED
+
 	# load proxyfied feature
 	local _proxy_feat_found="0"
 	if [ ! -z "$STELLA_FEATURE_RECIPE_EXTRA" ]; then
@@ -1117,7 +1116,7 @@ __internal_feature_context() {
 		#__select_official_schema_old "$_SCHEMA" "FEAT_SCHEMA_SELECTED" "TMP_FEAT_SCHEMA_NAME" "TMP_FEAT_SCHEMA_VERSION" "FEAT_ARCH" "FEAT_SCHEMA_FLAVOUR" "FEAT_SCHEMA_OS_RESTRICTION" "FEAT_SCHEMA_OS_EXCLUSION"
 		__select_official_schema "$_SCHEMA" "FEAT_SCHEMA_SELECTED" "TMP_FEAT_SCHEMA_NAME" "TMP_FEAT_SCHEMA_VERSION" "FEAT_ARCH" "FEAT_SCHEMA_FLAVOUR" "FEAT_SCHEMA_OS_RESTRICTION" "FEAT_SCHEMA_OS_EXCLUSION"
 	fi
-echo __internal_feature_context FEAT_SCHEMA_SELECTED $FEAT_SCHEMA_SELECTED
+
 	if [ ! "$FEAT_SCHEMA_SELECTED" = "" ]; then
 
 		# set install root (FEAT_INSTALL_ROOT) for current item of a bundle
